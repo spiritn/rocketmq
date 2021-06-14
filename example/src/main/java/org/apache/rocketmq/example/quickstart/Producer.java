@@ -44,7 +44,7 @@ public class Producer {
          * }
          * </pre>
          */
-
+        producer.setNamesrvAddr("127.0.0.1:9876");
         /*
          * Launch the instance.
          */
@@ -56,8 +56,7 @@ public class Producer {
                 /*
                  * Create a message instance, specifying topic, tag and message body.
                  */
-                Message msg = new Message("TopicTest" /* Topic */,
-                    "TagA" /* Tag */,
+                Message msg = new Message("TopicTest" , "TagA" ,
                     ("Hello RocketMQ " + i).getBytes(RemotingHelper.DEFAULT_CHARSET) /* Message body */
                 );
 

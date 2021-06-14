@@ -51,10 +51,14 @@ public class NamesrvStartup {
         main0(args);
     }
 
+    /**
+     * nameSrv启动入口
+     */
     public static NamesrvController main0(String[] args) {
-
         try {
+            // 先创建NamesrvController
             NamesrvController controller = createNamesrvController(args);
+            // 然后启动NamesrvController
             start(controller);
             String tip = "The Name Server boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
             log.info(tip);
@@ -64,7 +68,6 @@ public class NamesrvStartup {
             e.printStackTrace();
             System.exit(-1);
         }
-
         return null;
     }
 
@@ -72,6 +75,8 @@ public class NamesrvStartup {
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
         //PackageConflictDetect.detectFastjson();
 
+        // 这里其实就是获取启动时指定的命令参数，-c=指定配置文件，-n=指定IP：port，
+        // -p打印NamesrvConfig和NettyServerConfig所有的参数配置，-h展示help信息
         Options options = ServerUtil.buildCommandlineOptions(new Options());
         commandLine = ServerUtil.parseCmdLine("mqnamesrv", args, buildCommandlineOptions(options), new PosixParser());
         if (null == commandLine) {
@@ -80,14 +85,18 @@ public class NamesrvStartup {
         }
 
         final NamesrvConfig namesrvConfig = new NamesrvConfig();
+        // 使用的是Netty，并修改其监听端口位9876，所以broke，producer都要来连9876端口。写死是因为肯定没人会改吗
         final NettyServerConfig nettyServerConfig = new NettyServerConfig();
         nettyServerConfig.setListenPort(9876);
         if (commandLine.hasOption('c')) {
+            // 加载-c=指定的配置文件
             String file = commandLine.getOptionValue('c');
             if (file != null) {
+                // 看看如何加载指定file，new BufferedInputStream(new FileInputStream(file))
                 InputStream in = new BufferedInputStream(new FileInputStream(file));
                 properties = new Properties();
                 properties.load(in);
+                // 加载配置到namesrvConfig和nettyServerConfig
                 MixAll.properties2Object(properties, namesrvConfig);
                 MixAll.properties2Object(properties, nettyServerConfig);
 
@@ -116,6 +125,7 @@ public class NamesrvStartup {
         JoranConfigurator configurator = new JoranConfigurator();
         configurator.setContext(lc);
         lc.reset();
+        // 去ROCKETMQ_HOME的/conf下读取日志文件，所以记得要添加日志配置文件
         configurator.doConfigure(namesrvConfig.getRocketmqHome() + "/conf/logback_namesrv.xml");
 
         log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
@@ -123,6 +133,7 @@ public class NamesrvStartup {
         MixAll.printObjectProperties(log, namesrvConfig);
         MixAll.printObjectProperties(log, nettyServerConfig);
 
+        // 创建NamesrvController
         final NamesrvController controller = new NamesrvController(namesrvConfig, nettyServerConfig);
 
         // remember all configs to prevent discard
@@ -131,18 +142,21 @@ public class NamesrvStartup {
         return controller;
     }
 
+    /**
+     * 启动NamesrvController
+     */
     public static NamesrvController start(final NamesrvController controller) throws Exception {
 
         if (null == controller) {
             throw new IllegalArgumentException("NamesrvController is null");
         }
-
+        // 初始化
         boolean initResult = controller.initialize();
+        // 在初始化失败和虚拟机关闭时，都去执行各个关闭逻辑
         if (!initResult) {
             controller.shutdown();
             System.exit(-3);
         }
-
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, new Callable<Void>() {
             @Override
             public Void call() throws Exception {
@@ -151,6 +165,7 @@ public class NamesrvStartup {
             }
         }));
 
+        // 启动
         controller.start();
 
         return controller;

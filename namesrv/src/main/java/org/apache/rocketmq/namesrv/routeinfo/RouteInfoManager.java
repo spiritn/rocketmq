@@ -47,11 +47,19 @@ import org.apache.rocketmq.remoting.common.RemotingUtil;
 
 public class RouteInfoManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
+
+    // broke2分钟未更新心跳，就会被剔除
     private final static long BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2;
+
+    // 通过读写锁来保证这些table的并发安全！！也是读写锁的实际应用场景
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+    // 主要存储topic和brokerName
     private final HashMap<String/* topic */, List<QueueData>> topicQueueTable;
+    // 主要存储brokerName和（cluster，多个brokerId/brokerAddr）
     private final HashMap<String/* brokerName */, BrokerData> brokerAddrTable;
     private final HashMap<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable;
+    // 主要存储brokerAddr和lastUpdateTimestamp
     private final HashMap<String/* brokerAddr */, BrokerLiveInfo> brokerLiveTable;
     private final HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
 
@@ -99,6 +107,9 @@ public class RouteInfoManager {
         return topicList.encode();
     }
 
+    /**
+     * DefaultRequestProcessor接收注册请求然后调用此方法注册broke
+     */
     public RegisterBrokerResult registerBroker(
         final String clusterName,
         final String brokerAddr,
@@ -111,6 +122,7 @@ public class RouteInfoManager {
         RegisterBrokerResult result = new RegisterBrokerResult();
         try {
             try {
+                // 和lock.lock()有啥区别
                 this.lock.writeLock().lockInterruptibly();
 
                 Set<String> brokerNames = this.clusterAddrTable.get(clusterName);
@@ -158,7 +170,7 @@ public class RouteInfoManager {
 
                 BrokerLiveInfo prevBrokerLiveInfo = this.brokerLiveTable.put(brokerAddr,
                     new BrokerLiveInfo(
-                        System.currentTimeMillis(),
+                        System.currentTimeMillis(), // 当前时间
                         topicConfigWrapper.getDataVersion(),
                         channel,
                         haServerAddr));
@@ -371,6 +383,9 @@ public class RouteInfoManager {
         }
     }
 
+    /**
+     * 根据topic查询路由信息
+     */
     public TopicRouteData pickupTopicRouteData(final String topic) {
         TopicRouteData topicRouteData = new TopicRouteData();
         boolean foundQueueData = false;
@@ -384,15 +399,17 @@ public class RouteInfoManager {
 
         try {
             try {
+                // 获取读锁
                 this.lock.readLock().lockInterruptibly();
                 List<QueueData> queueDataList = this.topicQueueTable.get(topic);
                 if (queueDataList != null) {
                     topicRouteData.setQueueDatas(queueDataList);
-                    foundQueueData = true;
+                    foundQueueData = true; // 找到topic了
 
                     Iterator<QueueData> it = queueDataList.iterator();
                     while (it.hasNext()) {
                         QueueData qd = it.next();
+                        // brokerNameSet装着topic对应的brokeName
                         brokerNameSet.add(qd.getBrokerName());
                     }
 
@@ -402,7 +419,7 @@ public class RouteInfoManager {
                             BrokerData brokerDataClone = new BrokerData(brokerData.getCluster(), brokerData.getBrokerName(), (HashMap<Long, String>) brokerData
                                 .getBrokerAddrs().clone());
                             brokerDataList.add(brokerDataClone);
-                            foundBrokerData = true;
+                            foundBrokerData = true; // 找到broke了
                             for (final String brokerAddr : brokerDataClone.getBrokerAddrs().values()) {
                                 List<String> filterServerList = this.filterServerTable.get(brokerAddr);
                                 filterServerMap.put(brokerAddr, filterServerList);
@@ -426,6 +443,9 @@ public class RouteInfoManager {
         return null;
     }
 
+    /**
+     * 每10秒来扫描，去除不活动的broke
+     */
     public void scanNotActiveBroker() {
         Iterator<Entry<String, BrokerLiveInfo>> it = this.brokerLiveTable.entrySet().iterator();
         while (it.hasNext()) {
@@ -440,6 +460,7 @@ public class RouteInfoManager {
         }
     }
 
+    // 更新各个table
     public void onChannelDestroy(String remoteAddr, Channel channel) {
         String brokerAddrFound = null;
         if (channel != null) {

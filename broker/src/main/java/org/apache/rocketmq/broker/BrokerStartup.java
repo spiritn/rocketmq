@@ -58,6 +58,9 @@ public class BrokerStartup {
         start(createBrokerController(args));
     }
 
+    /**
+     * 启动BrokerController
+     */
     public static BrokerController start(BrokerController controller) {
         try {
 
@@ -87,6 +90,9 @@ public class BrokerStartup {
         }
     }
 
+    /**
+     * 创建BrokerController
+     */
     public static BrokerController createBrokerController(String[] args) {
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
 
@@ -107,13 +113,14 @@ public class BrokerStartup {
                 System.exit(-1);
             }
 
+            // 配置类
             final BrokerConfig brokerConfig = new BrokerConfig();
             final NettyServerConfig nettyServerConfig = new NettyServerConfig();
             final NettyClientConfig nettyClientConfig = new NettyClientConfig();
 
             nettyClientConfig.setUseTLS(Boolean.parseBoolean(System.getProperty(TLS_ENABLE,
                 String.valueOf(TlsSystemConfig.tlsMode == TlsMode.ENFORCING))));
-            nettyServerConfig.setListenPort(10911);
+            nettyServerConfig.setListenPort(10911); // broke监听producer的端口就是就是10911
             final MessageStoreConfig messageStoreConfig = new MessageStoreConfig();
 
             if (BrokerRole.SLAVE == messageStoreConfig.getBrokerRole()) {
@@ -129,6 +136,7 @@ public class BrokerStartup {
                     properties = new Properties();
                     properties.load(in);
 
+                    // 加载配置，配置类也就这四个了
                     properties2SystemEnv(properties);
                     MixAll.properties2Object(properties, brokerConfig);
                     MixAll.properties2Object(properties, nettyServerConfig);
@@ -162,6 +170,7 @@ public class BrokerStartup {
                 }
             }
 
+            // broke的角色，setBrokerId
             switch (messageStoreConfig.getBrokerRole()) {
                 case ASYNC_MASTER:
                 case SYNC_MASTER:
@@ -211,6 +220,7 @@ public class BrokerStartup {
             MixAll.printObjectProperties(log, nettyClientConfig);
             MixAll.printObjectProperties(log, messageStoreConfig);
 
+            // 创建BrokerController
             final BrokerController controller = new BrokerController(
                 brokerConfig,
                 nettyServerConfig,
@@ -219,6 +229,7 @@ public class BrokerStartup {
             // remember all configs to prevent discard
             controller.getConfiguration().registerConfig(properties);
 
+            // 初始化
             boolean initResult = controller.initialize();
             if (!initResult) {
                 controller.shutdown();

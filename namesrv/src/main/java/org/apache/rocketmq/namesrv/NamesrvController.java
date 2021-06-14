@@ -43,18 +43,18 @@ public class NamesrvController {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
 
     private final NamesrvConfig namesrvConfig;
-
     private final NettyServerConfig nettyServerConfig;
 
+    // 每10秒去检测不活动的broke
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl(
         "NSScheduledThread"));
+
+    // 管理KV配置属性的持久化路径
     private final KVConfigManager kvConfigManager;
     private final RouteInfoManager routeInfoManager;
 
     private RemotingServer remotingServer;
-
     private BrokerHousekeepingService brokerHousekeepingService;
-
     private ExecutorService remotingExecutor;
 
     private Configuration configuration;
@@ -74,24 +74,25 @@ public class NamesrvController {
     }
 
     public boolean initialize() {
-
+        // 加载本地的KV配置
         this.kvConfigManager.load();
 
+        // 创建NettyRemotingServer，namesrv其实就是个netty服务端
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);
-
+        // netty需要的工作线程池，并注册到remotingServer
         this.remotingExecutor =
             Executors.newFixedThreadPool(nettyServerConfig.getServerWorkerThreads(), new ThreadFactoryImpl("RemotingExecutorThread_"));
-
         this.registerProcessor();
 
+        // 初始化定时任务，每10秒去扫描不活动的broke
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-
             @Override
             public void run() {
                 NamesrvController.this.routeInfoManager.scanNotActiveBroker();
             }
         }, 5, 10, TimeUnit.SECONDS);
 
+        // 每10分钟去打印日志？？
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
