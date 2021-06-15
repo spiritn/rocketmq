@@ -28,6 +28,7 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 public interface MQAdmin {
     /**
      * Creates an topic
+     * 创建Topic
      *
      * @param key accesskey
      * @param newTopic topic name
@@ -50,6 +51,7 @@ public interface MQAdmin {
     /**
      * Gets the message queue offset according to some time in milliseconds<br>
      * be cautious to call because of more IO overhead
+     * 根据时间戳获取MessageQueue的偏移量
      *
      * @param mq Instance of MessageQueue
      * @param timestamp from when in milliseconds.

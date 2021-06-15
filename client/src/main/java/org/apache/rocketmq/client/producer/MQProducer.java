@@ -31,14 +31,17 @@ public interface MQProducer extends MQAdmin {
 
     void shutdown();
 
+    // 查找topic下所有消息
     List<MessageQueue> fetchPublishMessageQueues(final String topic) throws MQClientException;
 
+    // 同步发送消息，有返回值
     SendResult send(final Message msg) throws MQClientException, RemotingException, MQBrokerException,
         InterruptedException;
 
     SendResult send(final Message msg, final long timeout) throws MQClientException,
         RemotingException, MQBrokerException, InterruptedException;
 
+    // 异步发送消息，所有没有返回值，有SendCallback
     void send(final Message msg, final SendCallback sendCallback) throws MQClientException,
         RemotingException, InterruptedException;
 
@@ -48,12 +51,14 @@ public interface MQProducer extends MQAdmin {
     void sendOneway(final Message msg) throws MQClientException, RemotingException,
         InterruptedException;
 
+    // 同步地发送到指定的MessageQueue
     SendResult send(final Message msg, final MessageQueue mq) throws MQClientException,
         RemotingException, MQBrokerException, InterruptedException;
 
     SendResult send(final Message msg, final MessageQueue mq, final long timeout)
         throws MQClientException, RemotingException, MQBrokerException, InterruptedException;
 
+    // 异步地发送到指定的MessageQueue
     void send(final Message msg, final MessageQueue mq, final SendCallback sendCallback)
         throws MQClientException, RemotingException, InterruptedException;
 
@@ -63,6 +68,7 @@ public interface MQProducer extends MQAdmin {
     void sendOneway(final Message msg, final MessageQueue mq) throws MQClientException,
         RemotingException, InterruptedException;
 
+    // 指定MessageQueueSelector，用于轮询？
     SendResult send(final Message msg, final MessageQueueSelector selector, final Object arg)
         throws MQClientException, RemotingException, MQBrokerException, InterruptedException;
 
@@ -84,10 +90,11 @@ public interface MQProducer extends MQAdmin {
     TransactionSendResult sendMessageInTransaction(final Message msg,
         final LocalTransactionExecuter tranExecuter, final Object arg) throws MQClientException;
 
+    // 发送事务消息
     TransactionSendResult sendMessageInTransaction(final Message msg,
         final Object arg) throws MQClientException;
 
-    //for batch
+    //for batch 批量发送消息
     SendResult send(final Collection<Message> msgs) throws MQClientException, RemotingException, MQBrokerException,
         InterruptedException;
 
@@ -99,19 +106,19 @@ public interface MQProducer extends MQAdmin {
 
     SendResult send(final Collection<Message> msgs, final MessageQueue mq, final long timeout)
         throws MQClientException, RemotingException, MQBrokerException, InterruptedException;
-    
+
     void send(final Collection<Message> msgs, final SendCallback sendCallback) throws MQClientException, RemotingException, MQBrokerException,
         InterruptedException;
-    
+
     void send(final Collection<Message> msgs, final SendCallback sendCallback, final long timeout) throws MQClientException, RemotingException,
         MQBrokerException, InterruptedException;
-    
+
     void send(final Collection<Message> msgs, final MessageQueue mq, final SendCallback sendCallback) throws MQClientException, RemotingException,
         MQBrokerException, InterruptedException;
-    
+
     void send(final Collection<Message> msgs, final MessageQueue mq, final SendCallback sendCallback, final long timeout) throws MQClientException,
         RemotingException, MQBrokerException, InterruptedException;
-    
+
     //for rpc
     Message request(final Message msg, final long timeout) throws RequestTimeoutException, MQClientException,
         RemotingException, MQBrokerException, InterruptedException;
