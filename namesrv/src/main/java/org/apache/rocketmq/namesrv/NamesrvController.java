@@ -84,7 +84,7 @@ public class NamesrvController {
             Executors.newFixedThreadPool(nettyServerConfig.getServerWorkerThreads(), new ThreadFactoryImpl("RemotingExecutorThread_"));
         this.registerProcessor();
 
-        // 初始化定时任务，每10秒去扫描不活动的broke
+        // 初始化心跳检测定时任务，每10秒去扫描不活动的broke
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -92,14 +92,14 @@ public class NamesrvController {
             }
         }, 5, 10, TimeUnit.SECONDS);
 
-        // 每10分钟去打印日志？？
+        // 每10分钟去打印KV篇日志
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
             public void run() {
                 NamesrvController.this.kvConfigManager.printAllPeriodically();
             }
-        }, 1, 10, TimeUnit.MINUTES);
+        }, 1, 10, TimeUnit.SECONDS);
 
         if (TlsSystemConfig.tlsMode != TlsMode.DISABLED) {
             // Register a listener to reload SslContext
@@ -153,6 +153,9 @@ public class NamesrvController {
         }
     }
 
+    /**
+     * 启动NamesrvController
+     */
     public void start() throws Exception {
         this.remotingServer.start();
 
@@ -163,6 +166,7 @@ public class NamesrvController {
 
     public void shutdown() {
         this.remotingServer.shutdown();
+        // 优雅的关闭线程池，即执行已有的任务，不接受新任务
         this.remotingExecutor.shutdown();
         this.scheduledExecutorService.shutdown();
 

@@ -33,6 +33,7 @@ public class KVConfigManager {
 
     private final NamesrvController namesrvController;
 
+    // 用读写锁，来控制同时读取，修改map的并发安全
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
     private final HashMap<String/* Namespace */, HashMap<String/* Key */, String/* Value */>> configTable =
         new HashMap<String, HashMap<String, String>>();
@@ -44,6 +45,7 @@ public class KVConfigManager {
     public void load() {
         String content = null;
         try {
+            // MixAll封装了读取File的工具类
             content = MixAll.file2String(this.namesrvController.getNamesrvConfig().getKvConfigPath());
         } catch (IOException e) {
             log.warn("Load KV config table exception", e);
@@ -58,6 +60,11 @@ public class KVConfigManager {
         }
     }
 
+    /**
+     * 注意这个经典写法
+     * lock.writeLock().lockInterruptibly()抛出checked Exception需要try-catch
+     * 内部需要try-finally释放锁
+     */
     public void putKVConfig(final String namespace, final String key, final String value) {
         try {
             this.lock.writeLock().lockInterruptibly();
@@ -97,6 +104,7 @@ public class KVConfigManager {
                 String content = kvConfigSerializeWrapper.toJson();
 
                 if (null != content) {
+                    // 存储到磁盘文件上
                     MixAll.string2File(content, this.namesrvController.getNamesrvConfig().getKvConfigPath());
                 }
             } catch (IOException e) {

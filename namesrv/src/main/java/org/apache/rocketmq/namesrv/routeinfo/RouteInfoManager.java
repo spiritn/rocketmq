@@ -773,7 +773,11 @@ public class RouteInfoManager {
     }
 }
 
+/**
+ * broke的心跳信息
+ */
 class BrokerLiveInfo {
+    // 最重要的信息，上次心跳时间
     private long lastUpdateTimestamp;
     private DataVersion dataVersion;
     private Channel channel;

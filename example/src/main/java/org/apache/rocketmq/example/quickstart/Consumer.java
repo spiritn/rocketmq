@@ -53,10 +53,6 @@ public class Consumer {
          * Specify where to start in case the specified consumer group is a brand new one.
          */
         consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_FIRST_OFFSET);
-
-        /*
-         * Subscribe one more more topics to consume.
-         */
         consumer.subscribe("TopicTest", "*");
 
         /*
@@ -67,7 +63,9 @@ public class Consumer {
             @Override
             public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> msgs,
                 ConsumeConcurrentlyContext context) {
-                System.out.printf("%s Receive New Messages: %s %n", Thread.currentThread().getName(), msgs);
+                for(MessageExt messageExt : msgs){
+                    System.out.printf("%s Receive New Messages: %s %n", Thread.currentThread().getName(), new String(messageExt.getBody()));
+                }
                 return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
             }
         });
