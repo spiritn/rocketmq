@@ -55,7 +55,9 @@ public class MQFaultStrategy {
         this.sendLatencyFaultEnable = sendLatencyFaultEnable;
     }
 
+    // 选择要发送的MessageQueue
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
+        //如果开启了sendLatencyFaultEnable，
         if (this.sendLatencyFaultEnable) {
             try {
                 int index = tpInfo.getSendWhichQueue().getAndIncrement();
@@ -64,10 +66,11 @@ public class MQFaultStrategy {
                     if (pos < 0)
                         pos = 0;
                     MessageQueue mq = tpInfo.getMessageQueueList().get(pos);
+                    // 如果latencyFaultTolerance存在，就返回
                     if (latencyFaultTolerance.isAvailable(mq.getBrokerName()))
                         return mq;
                 }
-
+                // 如果都存在发送失败过的，就选择一个相对好的
                 final String notBestBroker = latencyFaultTolerance.pickOneAtLeast();
                 int writeQueueNums = tpInfo.getQueueIdByBroker(notBestBroker);
                 if (writeQueueNums > 0) {
@@ -87,9 +90,11 @@ public class MQFaultStrategy {
             return tpInfo.selectOneMessageQueue();
         }
 
+        // 默认 返回一个不等于lastBrokerName的MessageQueue，也就是当发送失败时，不使用上次的brokeName
         return tpInfo.selectOneMessageQueue(lastBrokerName);
     }
 
+    // 发送失败时会更新到这里
     public void updateFaultItem(final String brokerName, final long currentLatency, boolean isolation) {
         if (this.sendLatencyFaultEnable) {
             long duration = computeNotAvailableDuration(isolation ? 30000 : currentLatency);

@@ -81,11 +81,15 @@ public class NamespaceUtil {
         return resourceWithNamespace;
     }
 
+    /**
+     * 其就是添加前缀namespace
+     */
     public static String wrapNamespace(String namespace, String resourceWithOutNamespace) {
         if (StringUtils.isEmpty(namespace) || StringUtils.isEmpty(resourceWithOutNamespace)) {
             return resourceWithOutNamespace;
         }
 
+        // 如果已经拼接%RETRY%
         if (isSystemResource(resourceWithOutNamespace) || isAlreadyWithNamespace(resourceWithOutNamespace, namespace)) {
             return resourceWithOutNamespace;
         }
@@ -93,10 +97,12 @@ public class NamespaceUtil {
         String resourceWithoutRetryAndDLQ = withOutRetryAndDLQ(resourceWithOutNamespace);
         StringBuilder stringBuilder = new StringBuilder();
 
+        // 如果是失败重试
         if (isRetryTopic(resourceWithOutNamespace)) {
             stringBuilder.append(MixAll.RETRY_GROUP_TOPIC_PREFIX);
         }
 
+        // 如果是延迟消息
         if (isDLQTopic(resourceWithOutNamespace)) {
             stringBuilder.append(MixAll.DLQ_GROUP_TOPIC_PREFIX);
         }

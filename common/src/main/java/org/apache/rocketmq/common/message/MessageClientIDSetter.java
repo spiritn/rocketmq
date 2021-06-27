@@ -111,6 +111,10 @@ public class MessageClientIDSetter {
         return value & 0x0000FFFF;
     }
 
+    /**
+     * 生成消息的唯一ID
+     * @return
+     */
     public static String createUniqID() {
         StringBuilder sb = new StringBuilder(LEN * 2);
         sb.append(FIX_STRING);

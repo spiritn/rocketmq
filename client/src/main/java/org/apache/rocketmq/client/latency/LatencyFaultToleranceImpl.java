@@ -54,6 +54,7 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         if (faultItem != null) {
             return faultItem.isAvailable();
         }
+        // 如果没有找到返回true
         return true;
     }
 

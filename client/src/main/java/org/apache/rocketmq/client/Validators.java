@@ -78,6 +78,9 @@ public class Validators {
         return matcher.matches();
     }
 
+    /**
+     * 校验消息
+     */
     public static void checkMessage(Message msg, DefaultMQProducer defaultMQProducer)
         throws MQClientException {
         if (null == msg) {
@@ -96,23 +99,31 @@ public class Validators {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL, "the message body length is zero");
         }
 
+        // 消息内容不能大于4M
         if (msg.getBody().length > defaultMQProducer.getMaxMessageSize()) {
             throw new MQClientException(ResponseCode.MESSAGE_ILLEGAL,
                 "the message body size over max value, MAX: " + defaultMQProducer.getMaxMessageSize());
         }
     }
 
+    /**
+     * 校验topic的名字
+     * @param topic
+     * @throws MQClientException
+     */
     public static void checkTopic(String topic) throws MQClientException {
         if (UtilAll.isBlank(topic)) {
             throw new MQClientException("The specified topic is blank", null);
         }
 
+        // 不能包含特殊字符
         if (!regularExpressionMatcher(topic, PATTERN)) {
             throw new MQClientException(String.format(
                 "The specified topic[%s] contains illegal characters, allowing only %s", topic,
                 VALID_PATTERN_STR), null);
         }
 
+        // 长度不能超过127
         if (topic.length() > TOPIC_MAX_LENGTH) {
             throw new MQClientException(
                 String.format("The specified topic is longer than topic max length %d.", TOPIC_MAX_LENGTH), null);

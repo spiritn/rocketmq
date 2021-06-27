@@ -602,6 +602,9 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 去获取topic对应的路由信息
+     */
     public boolean updateTopicRouteInfoFromNameServer(final String topic, boolean isDefault,
         DefaultMQProducer defaultMQProducer) {
         try {
@@ -619,8 +622,10 @@ public class MQClientInstance {
                             }
                         }
                     } else {
+                        // 实际的发出请求，从namesrv获取topic对应的路由信息
                         topicRouteData = this.mQClientAPIImpl.getTopicRouteInfoFromNameServer(topic, 1000 * 3);
                     }
+
                     if (topicRouteData != null) {
                         TopicRouteData old = this.topicRouteTable.get(topic);
                         boolean changed = topicRouteDataIsChange(old, topicRouteData);
@@ -631,6 +636,7 @@ public class MQClientInstance {
                         }
 
                         if (changed) {
+                            // 先复制一份，等会还要重新赋值回来。其实就是为了下面逻辑修改掉
                             TopicRouteData cloneTopicRouteData = topicRouteData.cloneTopicRouteData();
 
                             for (BrokerData bd : topicRouteData.getBrokerDatas()) {
