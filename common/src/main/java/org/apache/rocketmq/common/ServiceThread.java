@@ -132,7 +132,7 @@ public abstract class ServiceThread implements Runnable {
             return;
         }
 
-        //entry to wait
+        // entry to wait
         waitPoint.reset();
 
         try {

@@ -66,24 +66,28 @@ import org.apache.rocketmq.store.stats.BrokerStatsManager;
 public class DefaultMessageStore implements MessageStore {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    // MessageStore配置
     private final MessageStoreConfig messageStoreConfig;
     // CommitLog
     private final CommitLog commitLog;
-
+    // <topic, <queueId, ConsumeQueue>>
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
-
+    // 负责刷盘的service
     private final FlushConsumeQueueService flushConsumeQueueService;
 
     private final CleanCommitLogService cleanCommitLogService;
-
     private final CleanConsumeQueueService cleanConsumeQueueService;
 
+    // 索引service
     private final IndexService indexService;
 
+    // MappedFile的service，负责内存映射
     private final AllocateMappedFileService allocateMappedFileService;
 
+    // 负责commitLog消息分发给ConsumeQueue，IndexFile
     private final ReputMessageService reputMessageService;
 
+    // 负责同步
     private final HAService haService;
 
     private final ScheduleMessageService scheduleMessageService;
@@ -98,7 +102,10 @@ public class DefaultMessageStore implements MessageStore {
     private final ScheduledExecutorService scheduledExecutorService =
         Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("StoreScheduledThread"));
     private final BrokerStatsManager brokerStatsManager;
+
+    // 监听消息到来？
     private final MessageArrivingListener messageArrivingListener;
+    // broke服务本身的配置
     private final BrokerConfig brokerConfig;
 
     private volatile boolean shutdown = true;
@@ -389,7 +396,9 @@ public class DefaultMessageStore implements MessageStore {
             return PutMessageStatus.SERVICE_NOT_AVAILABLE;
         }
 
+        // 如果是从broke，
         if (BrokerRole.SLAVE == this.messageStoreConfig.getBrokerRole()) {
+            // 5万次才打印一次，也是怕疯狂打印日志。Apollo是利用了guava的rateLimit工具
             long value = this.printTimes.getAndIncrement();
             if ((value % 50000) == 0) {
                 log.warn("broke role is slave, so putMessage is forbidden");
@@ -474,13 +483,18 @@ public class DefaultMessageStore implements MessageStore {
         return resultFuture;
     }
 
+    /**
+     * 消息处理的重要方法
+     */
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
+        // 检查磁盘，pageCache等
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {
             return new PutMessageResult(checkStoreStatus, null);
         }
 
+        // 检查topic ,message.properties是否过大
         PutMessageStatus msgCheckStatus = this.checkMessage(msg);
         if (msgCheckStatus == PutMessageStatus.MESSAGE_ILLEGAL) {
             return new PutMessageResult(msgCheckStatus, null);
@@ -488,11 +502,14 @@ public class DefaultMessageStore implements MessageStore {
 
         long beginTime = this.getSystemClock().now();
         PutMessageResult result = this.commitLog.putMessage(msg);
+
+        // elapsed是经过，elapsedTime也即是用时，耗时
         long elapsedTime = this.getSystemClock().now() - beginTime;
         if (elapsedTime > 500) {
             log.warn("not in lock elapsed time(ms)={}, bodyLength={}", elapsedTime, msg.getBody().length);
         }
 
+        // 保存PutMessage的时间最大值
         this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
 
         if (null == result || !result.isOk()) {
