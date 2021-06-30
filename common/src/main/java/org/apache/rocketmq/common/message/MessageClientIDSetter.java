@@ -112,7 +112,7 @@ public class MessageClientIDSetter {
     }
 
     /**
-     * 生成消息的唯一ID
+     * 生成消息的唯一ID  bytes2string
      * @return
      */
     public static String createUniqID() {

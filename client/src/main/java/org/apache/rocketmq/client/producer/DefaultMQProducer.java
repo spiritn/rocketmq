@@ -49,6 +49,7 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
  * It's fine to tune fields which exposes getter/setter methods, but keep in mind, all of them should work well out of
  * box for most scenarios. </p>
  *
+ * 该类聚合了各种send方法以将消息传递给代理。 它们各有利弊； 在实际编码之前，您最好了解它们的优点和缺点
  * This class aggregates various <code>send</code> methods to deliver messages to brokers. Each of them has pros and
  * cons; you'd better understand strengths and weakness of them before actually coding. </p>
  *
@@ -62,6 +63,7 @@ public class DefaultMQProducer extends ClientConfig implements MQProducer {
      * 实际上所有的实现逻辑是在这个类里
      */
     protected final transient DefaultMQProducerImpl defaultMQProducerImpl;
+
     private final InternalLogger log = ClientLogger.getLog();
     /**
      * 生产者组在概念上聚合了完全相同角色的所有生产者实例，这在涉及事务性消息时尤为重要。

@@ -207,10 +207,11 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         null);
                 }
 
+                // topic路由缓存表 添加默认topic路由
                 this.topicPublishInfoTable.put(this.defaultMQProducer.getCreateTopicKey(), new TopicPublishInfo());
 
                 if (startFactory) {
-                    // 启动MQClientInstance
+                    // 启动MQClientInstance,很多重要逻辑在里面
                     mQClientFactory.start();
                 }
 
@@ -567,14 +568,14 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         final long timeout
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         this.makeSureStateOK();
-        // 校验消息，如topicName不能包含特殊字符，长度不能超过127个字符。消息内容不能为空和大于4M
+        // 1. 校验消息，如topicName不能包含特殊字符，长度不能超过127个字符。消息内容不能为空和大于4M
         Validators.checkMessage(msg, this.defaultMQProducer);
         final long invokeID = random.nextLong();
         long beginTimestampFirst = System.currentTimeMillis();
         long beginTimestampPrev = beginTimestampFirst;
         long endTimestamp = beginTimestampFirst;
 
-        // 获取topic路由信息
+        // 2. 获取topic路由信息
         TopicPublishInfo topicPublishInfo = this.tryToFindTopicPublishInfo(msg.getTopic());
         if (topicPublishInfo != null && topicPublishInfo.ok()) {
             boolean callTimeout = false;
@@ -589,7 +590,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             for (; times < timesTotal; times++) {
                 // 如果属于失败后再次重试的，获取lastBrokerName
                 String lastBrokerName = null == mq ? null : mq.getBrokerName();
-                // 选择要发送的MessageQueue，重要方法！
+                // 3. 选择要发送的MessageQueue，重要方法！
                 MessageQueue mqSelected = this.selectOneMessageQueue(topicPublishInfo, lastBrokerName);
                 if (mqSelected != null) {
                     mq = mqSelected;
@@ -717,9 +718,11 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     private TopicPublishInfo tryToFindTopicPublishInfo(final String topic) {
         // topicPublishInfoTable缓存了所有的topic路由信息
         TopicPublishInfo topicPublishInfo = this.topicPublishInfoTable.get(topic);
-        // 如果topic对应的messageQueue为空
+
         if (null == topicPublishInfo || !topicPublishInfo.ok()) {
+            // 如果获取不到，就先插入一个new TopicPublishInfo()
             this.topicPublishInfoTable.putIfAbsent(topic, new TopicPublishInfo());
+            // 然后去nameserve更新缓存表
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
             topicPublishInfo = this.topicPublishInfoTable.get(topic);
         }
@@ -727,7 +730,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         if (topicPublishInfo.isHaveTopicRouterInfo() || topicPublishInfo.ok()) {
             return topicPublishInfo;
         } else {
-            // 去获取默认topic的路由？？
+            // 如果此时还是没有获取到
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic, true, this.defaultMQProducer);
             topicPublishInfo = this.topicPublishInfoTable.get(topic);
             return topicPublishInfo;
@@ -744,6 +747,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         final TopicPublishInfo topicPublishInfo,
         final long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         long beginStartTime = System.currentTimeMillis();
+        // master broke的addr
         String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(mq.getBrokerName());
         if (null == brokerAddr) {
             tryToFindTopicPublishInfo(mq.getTopic());
