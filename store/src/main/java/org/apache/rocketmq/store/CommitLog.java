@@ -784,12 +784,18 @@ public class CommitLog {
 
     }
 
+    /**
+     * =============================================================================================================
+     * 存储消息的重要流程方法
+     */
     public PutMessageResult putMessage(final MessageExtBrokerInner msg) {
+        // 设置StoreTimestamp和BodyCRC属性
         // Set the storage time
         msg.setStoreTimestamp(System.currentTimeMillis());
         // Set the message body BODY CRC (consider the most appropriate setting
         // on the client)
         msg.setBodyCRC(UtilAll.crc32(msg.getBody()));
+
         // Back to Results
         AppendMessageResult result = null;
 
@@ -799,18 +805,21 @@ public class CommitLog {
         int queueId = msg.getQueueId();
 
         final int tranType = MessageSysFlag.getTransactionValue(msg.getSysFlag());
+        // 如果是延迟消息 先判断如果不是事务消息或者是commit消息类型
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE
             || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
             if (msg.getDelayTimeLevel() > 0) {
+                // 容错处理，不能超过最大延迟等级
                 if (msg.getDelayTimeLevel() > this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel()) {
                     msg.setDelayTimeLevel(this.defaultMessageStore.getScheduleMessageService().getMaxDelayLevel());
                 }
-
+                // ！！！这里可以看到，如果是延迟消息，更改topic为SCHEDULE_TOPIC_XXXX
                 topic = TopicValidator.RMQ_SYS_SCHEDULE_TOPIC;
+                // 根据delayLevel获取queueId
                 queueId = ScheduleMessageService.delayLevel2QueueId(msg.getDelayTimeLevel());
 
-                // Backup real topic, queueId
+                // Backup real topic, queueId 记录下原始的topic和queueID，以便在到期投递时使用
                 MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_TOPIC, msg.getTopic());
                 MessageAccessor.putProperty(msg, MessageConst.PROPERTY_REAL_QUEUE_ID, String.valueOf(msg.getQueueId()));
                 msg.setPropertiesString(MessageDecoder.messageProperties2String(msg.getProperties()));
@@ -835,16 +844,18 @@ public class CommitLog {
         MappedFile unlockMappedFile = null;
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile();
 
+        // !!! 这里存储消息前要先加锁，这里的锁有两种实现ReentrantLock或者自旋锁（基于CAS），自旋锁可以在竞争少的情况下使用
         putMessageLock.lock(); //spin or ReentrantLock ,depending on store config
         try {
             long beginLockTimestamp = this.defaultMessageStore.getSystemClock().now();
             this.beginTimeInLock = beginLockTimestamp;
 
-            // Here settings are stored timestamp, in order to ensure an orderly
-            // global
+            // Here settings are stored timestamp, in order to ensure an orderly global
+            // 上面已经设置了一次StoreTimestamp，这里是拿到锁以后又设置一次，可以保证全局有序
             msg.setStoreTimestamp(beginLockTimestamp);
 
             if (null == mappedFile || mappedFile.isFull()) {
+                // 如果mappedFile为空或者满了，就新创建一个
                 mappedFile = this.mappedFileQueue.getLastMappedFile(0); // Mark: NewFile may be cause noise
             }
             if (null == mappedFile) {
@@ -853,6 +864,7 @@ public class CommitLog {
                 return new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null);
             }
 
+            // 利用appendMessageCallback去追加消息到commitLog
             result = mappedFile.appendMessage(msg, this.appendMessageCallback);
             switch (result.getStatus()) {
                 case PUT_OK:
@@ -888,6 +900,7 @@ public class CommitLog {
         }
 
         if (elapsedTimeInLock > 500) {
+            // 如果保存消息超过500ms，提醒一下
             log.warn("[NOTIFYME]putMessage in lock cost time(ms)={}, bodyLength={} AppendMessageResult={}", elapsedTimeInLock, msg.getBody().length, result);
         }
 
@@ -897,11 +910,13 @@ public class CommitLog {
 
         PutMessageResult putMessageResult = new PutMessageResult(PutMessageStatus.PUT_OK, result);
 
-        // Statistics
+        // Statistics 统计数据，topic发了多少消息，消息总共有有多大了
         storeStatsService.getSinglePutMessageTopicTimesTotal(msg.getTopic()).incrementAndGet();
         storeStatsService.getSinglePutMessageTopicSizeTotal(topic).addAndGet(result.getWroteBytes());
 
+        // 处理同步刷盘还是异步刷盘
         handleDiskFlush(result, putMessageResult, msg);
+        // 处理同步主从复制还是异步
         handleHA(result, putMessageResult, msg);
 
         return putMessageResult;
@@ -952,12 +967,16 @@ public class CommitLog {
     }
 
 
+    // 处理同步刷盘还是异步刷盘
     public void handleDiskFlush(AppendMessageResult result, PutMessageResult putMessageResult, MessageExt messageExt) {
-        // Synchronization flush
+        // Synchronization flush 如果是同步刷盘
         if (FlushDiskType.SYNC_FLUSH == this.defaultMessageStore.getMessageStoreConfig().getFlushDiskType()) {
+            // GroupCommitService负责进行刷盘
             final GroupCommitService service = (GroupCommitService) this.flushCommitLogService;
+            // 如果producer设置消息WaitStoreMsgOK，还要等待刷盘OK成功才返回给producer端，这样最安全但是也更慢
             if (messageExt.isWaitStoreMsgOK()) {
                 GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes());
+                // 添加刷盘请求（后台定时任务进行刷盘，每隔10毫秒批量刷盘。10毫秒中如果有多个请求，则多个请求一块刷盘）
                 service.putRequest(request);
                 CompletableFuture<PutMessageStatus> flushOkFuture = request.future();
                 PutMessageStatus flushStatus = null;
@@ -973,6 +992,7 @@ public class CommitLog {
                     putMessageResult.setPutMessageStatus(PutMessageStatus.FLUSH_DISK_TIMEOUT);
                 }
             } else {
+                // 如果没有设置WaitStoreMsgOK，那就是只要同步刷盘就好了？也就是万一同步刷盘失败了，producer也不知道。
                 service.wakeup();
             }
         }
@@ -987,16 +1007,20 @@ public class CommitLog {
     }
 
     public void handleHA(AppendMessageResult result, PutMessageResult putMessageResult, MessageExt messageExt) {
+        // 同步主模式
         if (BrokerRole.SYNC_MASTER == this.defaultMessageStore.getMessageStoreConfig().getBrokerRole()) {
             HAService service = this.defaultMessageStore.getHaService();
+            // 如果开启WaitStoreMsgOK，才同步？？
             if (messageExt.isWaitStoreMsgOK()) {
                 // Determine whether to wait
                 if (service.isSlaveOK(result.getWroteOffset() + result.getWroteBytes())) {
                     GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes());
+                    // 添加请求
                     service.putRequest(request);
                     service.getWaitNotifyObject().wakeupAll();
                     PutMessageStatus replicaStatus = null;
                     try {
+                         // 同步复制的超时时间为5秒
                         replicaStatus = request.future().get(this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout(),
                                 TimeUnit.MILLISECONDS);
                     } catch (InterruptedException | ExecutionException | TimeoutException e) {
@@ -1014,7 +1038,6 @@ public class CommitLog {
                 }
             }
         }
-
     }
 
     public PutMessageResult putMessages(final MessageExtBatch messageExtBatch) {
@@ -1453,6 +1476,7 @@ public class CommitLog {
 
             while (!this.isStopped()) {
                 try {
+                    // 从这里可以看出 无线循环，每10毫秒进行刷盘一次
                     this.waitForRunning(10);
                     this.doCommit();
                 } catch (Exception e) {
@@ -1472,6 +1496,7 @@ public class CommitLog {
                 this.swapRequests();
             }
 
+            // 进行提交
             this.doCommit();
 
             CommitLog.log.info(this.getServiceName() + " service end");

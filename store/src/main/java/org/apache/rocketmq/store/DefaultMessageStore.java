@@ -503,7 +503,7 @@ public class DefaultMessageStore implements MessageStore {
         long beginTime = this.getSystemClock().now();
         PutMessageResult result = this.commitLog.putMessage(msg);
 
-        // elapsed是经过，elapsedTime也即是用时，耗时
+        // elapsed是经过，elapsedTime也即是用时，耗时的意思
         long elapsedTime = this.getSystemClock().now() - beginTime;
         if (elapsedTime > 500) {
             log.warn("not in lock elapsed time(ms)={}, bodyLength={}", elapsedTime, msg.getBody().length);
@@ -513,6 +513,7 @@ public class DefaultMessageStore implements MessageStore {
         this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
 
         if (null == result || !result.isOk()) {
+            // 失败次数+1
             this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
         }
 
