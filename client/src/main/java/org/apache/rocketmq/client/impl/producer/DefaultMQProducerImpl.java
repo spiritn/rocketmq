@@ -182,7 +182,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         this.start(true);
     }
 
-    // 启动producer实例，真正的初始化逻辑
+    // 启动producer实例，
     public void start(final boolean startFactory) throws MQClientException {
         switch (this.serviceState) {
             case CREATE_JUST:
@@ -190,12 +190,12 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
                 this.checkConfig();
 
-                // 用进程PID来命名实例
+                // 用进程PID来命名instanceName
                 if (!this.defaultMQProducer.getProducerGroup().equals(MixAll.CLIENT_INNER_PRODUCER_GROUP)) {
                     this.defaultMQProducer.changeInstanceNameToPID();
                 }
 
-                // MQClientInstance封装了和broke，namesrv通信，会存在多个（比如消费者和生产者），利用IP@PID来区分
+                // MQClientInstance负责和broke，namesrv通信，利用IP@PID来区分。同一个进程内producer和consumer共享
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQProducer, rpcHook);
 
                 // 还要注册当前生产者，主要用来区分生产者组

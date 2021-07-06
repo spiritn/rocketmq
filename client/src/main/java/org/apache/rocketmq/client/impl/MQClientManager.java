@@ -46,12 +46,14 @@ public class MQClientManager {
     }
 
     public MQClientInstance getOrCreateMQClientInstance(final ClientConfig clientConfig, RPCHook rpcHook) {
+        // clientId例172.25.158.150@17764，这样来看一个进程只会有一个MQClientInstance，也即producer和consumer会共享MQClientInstance
         String clientId = clientConfig.buildMQClientId();
         MQClientInstance instance = this.factoryTable.get(clientId);
         if (null == instance) {
             instance =
                 new MQClientInstance(clientConfig.cloneClientConfig(),
                     this.factoryIndexGenerator.getAndIncrement(), clientId, rpcHook);
+            // factoryTable持有多个MQClientInstance,可是一个进程应该只有一个172.25.158.150@17764clientId啊，难道是通过unitName可以配置多个producer？
             MQClientInstance prev = this.factoryTable.putIfAbsent(clientId, instance);
             if (prev != null) {
                 instance = prev;

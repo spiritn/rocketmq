@@ -31,7 +31,7 @@ public class Producer {
         /*
          * Instantiate with a producer group name.
          */
-        DefaultMQProducer producer = new DefaultMQProducer("producer-1212");
+        DefaultMQProducer producer = new DefaultMQProducer("wanjun");
 
         /*
          * Specify name server addresses.
