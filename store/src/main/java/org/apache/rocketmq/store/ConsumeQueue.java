@@ -28,6 +28,7 @@ import org.apache.rocketmq.store.config.StorePathConfigHelper;
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    // ConsumeQueue中每个固定20个字节
     public static final int CQ_STORE_UNIT_SIZE = 20;
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
 
@@ -376,9 +377,11 @@ public class ConsumeQueue {
         return this.minLogicOffset / CQ_STORE_UNIT_SIZE;
     }
 
+    // 处理消息
     public void putMessagePositionInfoWrapper(DispatchRequest request) {
         final int maxRetries = 30;
         boolean canWrite = this.defaultMessageStore.getRunningFlags().isCQWriteable();
+        // 循环30次
         for (int i = 0; i < maxRetries && canWrite; i++) {
             long tagsCode = request.getTagsCode();
             if (isExtWriteEnable()) {
@@ -395,6 +398,7 @@ public class ConsumeQueue {
                         topic, queueId, request.getCommitLogOffset());
                 }
             }
+            // 核心方法
             boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(),
                 request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
             if (result) {
@@ -430,6 +434,7 @@ public class ConsumeQueue {
             return true;
         }
 
+        // 申请20个字节的大小，放入8字节的offset，4字节的size， 8字节的tagsCode
         this.byteBufferIndex.flip();
         this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);
         this.byteBufferIndex.putLong(offset);
@@ -438,6 +443,7 @@ public class ConsumeQueue {
 
         final long expectLogicOffset = cqOffset * CQ_STORE_UNIT_SIZE;
 
+        // 同样的获取MappedFile
         MappedFile mappedFile = this.mappedFileQueue.getLastMappedFile(expectLogicOffset);
         if (mappedFile != null) {
 
@@ -471,6 +477,7 @@ public class ConsumeQueue {
                 }
             }
             this.maxPhysicOffset = offset + size;
+            // 通过mappedFile写入
             return mappedFile.appendMessage(this.byteBufferIndex.array());
         }
         return false;

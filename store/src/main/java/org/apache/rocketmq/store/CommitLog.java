@@ -63,7 +63,10 @@ public class CommitLog {
 
     private final AppendMessageCallback appendMessageCallback;
     private final ThreadLocal<MessageExtBatchEncoder> batchEncoderThreadLocal;
+
+    // 存放每个queue目前的偏移量
     protected HashMap<String/* topic-queueid */, Long/* offset */> topicQueueTable = new HashMap<String, Long>(1024);
+
     protected volatile long confirmOffset = -1L;
 
     private volatile long beginTimeInLock = 0;
@@ -164,6 +167,7 @@ public class CommitLog {
 
     /**
      * When the normal exit, data recovery, all memory data have been flush
+     * 正常关闭时，数据的恢复
      */
     public void recoverNormally(long maxPhyOffsetOfConsumeQueue) {
         boolean checkCRCOnRecover = this.defaultMessageStore.getMessageStoreConfig().isCheckCRCOnRecover();
@@ -981,6 +985,7 @@ public class CommitLog {
                 CompletableFuture<PutMessageStatus> flushOkFuture = request.future();
                 PutMessageStatus flushStatus = null;
                 try {
+                    // 等待异步线程，超时时间为5秒
                     flushStatus = flushOkFuture.get(this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout(),
                             TimeUnit.MILLISECONDS);
                 } catch (InterruptedException | ExecutionException | TimeoutException e) {
@@ -1339,6 +1344,7 @@ public class CommitLog {
 
                 try {
                     if (flushCommitLogTimed) {
+                        // 每500毫秒将bytebuffer刷入物理磁盘
                         Thread.sleep(interval);
                     } else {
                         this.waitForRunning(interval);
@@ -1445,12 +1451,14 @@ public class CommitLog {
         private void doCommit() {
             synchronized (this.requestsRead) {
                 if (!this.requestsRead.isEmpty()) {
+                    // 遍历每个请求
                     for (GroupCommitRequest req : this.requestsRead) {
                         // There may be a message in the next file, so a maximum of
-                        // two times the flush
+                        // two times the flush 消息可能在两个文件里
                         boolean flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                         for (int i = 0; i < 2 && !flushOK; i++) {
                             CommitLog.this.mappedFileQueue.flush(0);
+                            // 如果刷盘点大于请求，说明刷盘成功
                             flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                         }
 
@@ -1459,6 +1467,7 @@ public class CommitLog {
 
                     long storeTimestamp = CommitLog.this.mappedFileQueue.getStoreTimestamp();
                     if (storeTimestamp > 0) {
+                        // 这里更新了Checkpoint的时间戳
                         CommitLog.this.defaultMessageStore.getStoreCheckpoint().setPhysicMsgTimestamp(storeTimestamp);
                     }
 
@@ -1547,7 +1556,7 @@ public class CommitLog {
             final MessageExtBrokerInner msgInner) {
             // STORETIMESTAMP + STOREHOSTADDRESS + OFFSET <br>
 
-            // PHY OFFSET
+            // PHY OFFSET 写的位置
             long wroteOffset = fileFromOffset + byteBuffer.position();
 
             int sysflag = msgInner.getSysFlag();
@@ -1558,6 +1567,7 @@ public class CommitLog {
             ByteBuffer storeHostHolder = ByteBuffer.allocate(storeHostLength);
 
             this.resetByteBuffer(storeHostHolder, storeHostLength);
+            // 生成msgId
             String msgId;
             if ((sysflag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0) {
                 msgId = MessageDecoder.createMessageId(this.msgIdMemory, msgInner.getStoreHostBytes(storeHostHolder), wroteOffset);
@@ -1565,12 +1575,12 @@ public class CommitLog {
                 msgId = MessageDecoder.createMessageId(this.msgIdV6Memory, msgInner.getStoreHostBytes(storeHostHolder), wroteOffset);
             }
 
-            // Record ConsumeQueue information
+            // Record ConsumeQueue information 也就是说记录了消息在ConsumeQueue的位置queueOffset
             keyBuilder.setLength(0);
             keyBuilder.append(msgInner.getTopic());
             keyBuilder.append('-');
             keyBuilder.append(msgInner.getQueueId());
-            String key = keyBuilder.toString();
+            String key = keyBuilder.toString(); // topic-queueId
             Long queueOffset = CommitLog.this.topicQueueTable.get(key);
             if (null == queueOffset) {
                 queueOffset = 0L;
@@ -1580,8 +1590,8 @@ public class CommitLog {
             // Transaction messages that require special handling
             final int tranType = MessageSysFlag.getTransactionValue(msgInner.getSysFlag());
             switch (tranType) {
-                // Prepared and Rollback message is not consumed, will not enter the
-                // consumer queuec
+                // Prepared and Rollback message is not consumed, will not enter the consumer queue
+                // 事务状态如果是Prepared或Rollback，就不进入consumer queue
                 case MessageSysFlag.TRANSACTION_PREPARED_TYPE:
                 case MessageSysFlag.TRANSACTION_ROLLBACK_TYPE:
                     queueOffset = 0L;
@@ -1679,7 +1689,8 @@ public class CommitLog {
                 this.msgStoreItemMemory.put(propertiesData);
 
             final long beginTimeMills = CommitLog.this.defaultMessageStore.now();
-            // Write messages to the queue buffer
+
+            // Write messages to the queue buffer 将msgStoreItemMemory写入到缓冲区byteBuffer
             byteBuffer.put(this.msgStoreItemMemory.array(), 0, msgLen);
 
             AppendMessageResult result = new AppendMessageResult(AppendMessageStatus.PUT_OK, wroteOffset, msgLen, msgId,

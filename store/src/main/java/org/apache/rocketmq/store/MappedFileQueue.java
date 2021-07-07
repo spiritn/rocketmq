@@ -29,18 +29,24 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * 对应commitLog文件的queue
+ */
 public class MappedFileQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
 
     private static final int DELETE_FILES_BATCH_MAX = 10;
 
+    // commitLog文件的存储路径
     private final String storePath;
 
+    // 默认是1G
     private final int mappedFileSize;
 
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
 
+    // 用于当前MappedFile写满后，创建新的
     private final AllocateMappedFileService allocateMappedFileService;
 
     private long flushedWhere = 0;
@@ -242,6 +248,7 @@ public class MappedFileQueue {
 
         while (!this.mappedFiles.isEmpty()) {
             try {
+                // 获取最后一个MappedFile
                 mappedFileLast = this.mappedFiles.get(this.mappedFiles.size() - 1);
                 break;
             } catch (IndexOutOfBoundsException e) {

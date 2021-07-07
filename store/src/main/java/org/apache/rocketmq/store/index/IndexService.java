@@ -194,10 +194,12 @@ public class IndexService {
         return new QueryOffsetResult(phyOffsets, indexLastUpdateTimestamp, indexLastUpdatePhyoffset);
     }
 
+    // 根据topic + "#" + key
     private String buildKey(final String topic, final String key) {
         return topic + "#" + key;
     }
 
+    // 拿到消息构建索引
     public void buildIndex(DispatchRequest req) {
         IndexFile indexFile = retryGetAndCreateIndexFile();
         if (indexFile != null) {
@@ -206,6 +208,7 @@ public class IndexService {
             String topic = msg.getTopic();
             String keys = msg.getKeys();
             if (msg.getCommitLogOffset() < endPhyOffset) {
+                // 这里说明是重复消息
                 return;
             }
 
@@ -215,10 +218,12 @@ public class IndexService {
                 case MessageSysFlag.TRANSACTION_PREPARED_TYPE:
                 case MessageSysFlag.TRANSACTION_COMMIT_TYPE:
                     break;
+                    // 如果是回滚消息，直接返回，不构建索引
                 case MessageSysFlag.TRANSACTION_ROLLBACK_TYPE:
                     return;
             }
 
+            // 写入UniqKey
             if (req.getUniqKey() != null) {
                 indexFile = putKey(indexFile, msg, buildKey(topic, req.getUniqKey()));
                 if (indexFile == null) {
@@ -229,6 +234,7 @@ public class IndexService {
 
             if (keys != null && keys.length() > 0) {
                 String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);
+                // 每个key也都写入
                 for (int i = 0; i < keyset.length; i++) {
                     String key = keyset[i];
                     if (key.length() > 0) {
