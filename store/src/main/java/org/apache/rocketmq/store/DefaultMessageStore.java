@@ -70,8 +70,11 @@ public class DefaultMessageStore implements MessageStore {
     private final MessageStoreConfig messageStoreConfig;
     // CommitLog
     private final CommitLog commitLog;
+
     // <topic, <queueId, ConsumeQueue>>
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
+
+
     // 负责刷盘的service
     private final FlushConsumeQueueService flushConsumeQueueService;
 
@@ -163,6 +166,7 @@ public class DefaultMessageStore implements MessageStore {
 
         this.indexService.start();
 
+        // 接收commitLog消息的分发，这里即ConsumeQueue和Index
         this.dispatcherList = new LinkedList<>();
         this.dispatcherList.addLast(new CommitLogDispatcherBuildConsumeQueue());
         this.dispatcherList.addLast(new CommitLogDispatcherBuildIndex());
@@ -183,12 +187,13 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
-     * @throws IOException
+     * 恢复文件
      */
     public boolean load() {
         boolean result = true;
 
         try {
+            // 通过abort文件的存在与否判断broke是否正常关闭
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 
@@ -196,10 +201,10 @@ public class DefaultMessageStore implements MessageStore {
                 result = result && this.scheduleMessageService.load();
             }
 
-            // load Commit Log
+            // load加载 Commit Log
             result = result && this.commitLog.load();
 
-            // load Consume Queue
+            // load加载 Consume Queue
             result = result && this.loadConsumeQueue();
 
             if (result) {
@@ -269,6 +274,7 @@ public class DefaultMessageStore implements MessageStore {
             log.info("[SetReputOffset] maxPhysicalPosInLogicQueue={} clMinOffset={} clMaxOffset={} clConfirmedOffset={}",
                 maxPhysicalPosInLogicQueue, this.commitLog.getMinOffset(), this.commitLog.getMaxOffset(), this.commitLog.getConfirmOffset());
             this.reputMessageService.setReputFromOffset(maxPhysicalPosInLogicQueue);
+            // 开启reputMessageService
             this.reputMessageService.start();
 
             /**
@@ -488,13 +494,13 @@ public class DefaultMessageStore implements MessageStore {
      */
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
-        // 检查磁盘，pageCache等
+        // check 不能是slave结点，磁盘是否可写，pageCache是否busy
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {
             return new PutMessageResult(checkStoreStatus, null);
         }
 
-        // 检查topic ,message.properties是否过大
+        // 检查topic不能超过127个字符 ,message.PropertiesString不能大于32767个字符
         PutMessageStatus msgCheckStatus = this.checkMessage(msg);
         if (msgCheckStatus == PutMessageStatus.MESSAGE_ILLEGAL) {
             return new PutMessageResult(msgCheckStatus, null);
@@ -508,15 +514,12 @@ public class DefaultMessageStore implements MessageStore {
         if (elapsedTime > 500) {
             log.warn("not in lock elapsed time(ms)={}, bodyLength={}", elapsedTime, msg.getBody().length);
         }
-
         // 保存PutMessage的时间最大值
         this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
-
         if (null == result || !result.isOk()) {
             // 失败次数+1
             this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
         }
-
         return result;
     }
 
@@ -1323,6 +1326,7 @@ public class DefaultMessageStore implements MessageStore {
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
+                // 每10秒去清除过期文件
                 DefaultMessageStore.this.cleanFilesPeriodically();
             }
         }, 1000 * 60, this.messageStoreConfig.getCleanResourceInterval(), TimeUnit.MILLISECONDS);
@@ -1363,11 +1367,13 @@ public class DefaultMessageStore implements MessageStore {
         // }, 1, 1, TimeUnit.HOURS);
         this.diskCheckScheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             public void run() {
+                // 每10秒去检查是否满了？
                 DefaultMessageStore.this.cleanCommitLogService.isSpaceFull();
             }
         }, 1000L, 10000L, TimeUnit.MILLISECONDS);
     }
 
+    // 清除过期CommitLog和ConsumeQueue
     private void cleanFilesPeriodically() {
         this.cleanCommitLogService.run();
         this.cleanConsumeQueueService.run();
@@ -1387,6 +1393,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 通过abort文件的存在与否判断broke是否正常关闭
+     */
     private boolean isTempFileExist() {
         String fileName = StorePathConfigHelper.getAbortFile(this.messageStoreConfig.getStorePathRootDir());
         File file = new File(fileName);
@@ -1434,8 +1443,10 @@ public class DefaultMessageStore implements MessageStore {
         long maxPhyOffsetOfConsumeQueue = this.recoverConsumeQueue();
 
         if (lastExitOK) {
+            // 正常恢复
             this.commitLog.recoverNormally(maxPhyOffsetOfConsumeQueue);
         } else {
+            // 异常恢复
             this.commitLog.recoverAbnormally(maxPhyOffsetOfConsumeQueue);
         }
 
@@ -1581,6 +1592,7 @@ public class DefaultMessageStore implements MessageStore {
         }, 6, TimeUnit.SECONDS);
     }
 
+    // 负责接收CommitLog的消息分发
     class CommitLogDispatcherBuildConsumeQueue implements CommitLogDispatcher {
 
         @Override
@@ -1598,16 +1610,21 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    // 负责接收CommitLog的消息分发
     class CommitLogDispatcherBuildIndex implements CommitLogDispatcher {
 
         @Override
         public void dispatch(DispatchRequest request) {
+            // 如果开启构建索引文件，就去buildIndex
             if (DefaultMessageStore.this.messageStoreConfig.isMessageIndexEnable()) {
                 DefaultMessageStore.this.indexService.buildIndex(request);
             }
         }
     }
 
+    /**
+     * 清除CommitLog
+     */
     class CleanCommitLogService {
 
         private final static int MAX_MANUAL_DELETE_FILE_TIMES = 20;
@@ -1639,14 +1656,18 @@ public class DefaultMessageStore implements MessageStore {
 
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            // 存活的时间
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
+            // 是否4点了
             boolean timeup = this.isTimeToDelete();
+            // 是否磁盘空间快满了
             boolean spacefull = this.isSpaceToDelete();
             boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
 
+            // 只要满足1个，就执行删除文件
             if (timeup || spacefull || manualDelete) {
 
                 if (manualDelete)
@@ -1900,6 +1921,7 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    // ReputMessageService
     class ReputMessageService extends ServiceThread {
 
         private volatile long reputFromOffset = 0;
@@ -1937,23 +1959,26 @@ public class DefaultMessageStore implements MessageStore {
             return this.reputFromOffset < DefaultMessageStore.this.commitLog.getMaxOffset();
         }
 
-        private void doReput() {
+         private void doReput() {
+            // 如果reputFromOffset小于commitLog的MinOffset，说明落后太堵了，没办法，从MinOffset重新消费吧
             if (this.reputFromOffset < DefaultMessageStore.this.commitLog.getMinOffset()) {
                 log.warn("The reputFromOffset={} is smaller than minPyOffset={}, this usually indicate that the dispatch behind too much and the commitlog has expired.",
                     this.reputFromOffset, DefaultMessageStore.this.commitLog.getMinOffset());
                 this.reputFromOffset = DefaultMessageStore.this.commitLog.getMinOffset();
             }
-            for (boolean doNext = true; this.isCommitLogAvailable() && doNext; ) {
 
+            for (boolean doNext = true; this.isCommitLogAvailable() && doNext; ) {
                 if (DefaultMessageStore.this.getMessageStoreConfig().isDuplicationEnable()
                     && this.reputFromOffset >= DefaultMessageStore.this.getConfirmOffset()) {
                     break;
                 }
 
+                // 根据reputFromOffset从commitLog找到数据
                 SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
+                // 如果有数据即消息
                 if (result != null) {
                     try {
-                        this.reputFromOffset = result.getStartOffset();
+                        this.reputFromOffset = result.getStartOffset(); // 下一次消费点
 
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
                             DispatchRequest dispatchRequest =
@@ -1962,6 +1987,7 @@ public class DefaultMessageStore implements MessageStore {
 
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
+                                    // 分发消息
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
 
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
@@ -2007,6 +2033,7 @@ public class DefaultMessageStore implements MessageStore {
                         result.release();
                     }
                 } else {
+                    // 没有就停止
                     doNext = false;
                 }
             }
@@ -2016,6 +2043,7 @@ public class DefaultMessageStore implements MessageStore {
         public void run() {
             DefaultMessageStore.log.info(this.getServiceName() + " service started");
 
+            // 循环doReput
             while (!this.isStopped()) {
                 try {
                     Thread.sleep(1);

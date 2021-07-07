@@ -188,6 +188,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             case CREATE_JUST:
                 this.serviceState = ServiceState.START_FAILED;
 
+                // 先校验producerGroup不能为空，长度不能超过255个字符，不能有特殊字符等。
                 this.checkConfig();
 
                 // 用进程PID来命名instanceName
@@ -196,9 +197,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 }
 
                 // MQClientInstance负责和broke，namesrv通信，利用IP@PID来区分。同一个进程内producer和consumer共享
+                // 创建MQClientInstance，clientId=IP@PID，MQClientInstance负责broke，namesrv通信
+                // 同一个进程只有一个MQClientInstance，消费者和生产者共享之
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQProducer, rpcHook);
-
-                // 还要注册当前生产者，主要用来区分生产者组
+                // 注册当前生产者到MQClientInstance，可能有多个group的producer
                 boolean registerOK = mQClientFactory.registerProducer(this.defaultMQProducer.getProducerGroup(), this);
                 if (!registerOK) {
                     this.serviceState = ServiceState.CREATE_JUST;
@@ -207,11 +209,11 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         null);
                 }
 
-                // topic路由缓存表 添加默认topic路由
+                // 向topic路由缓存表里添加默认topic，这个在发送里会提到
                 this.topicPublishInfoTable.put(this.defaultMQProducer.getCreateTopicKey(), new TopicPublishInfo());
 
                 if (startFactory) {
-                    // 启动MQClientInstance,很多重要逻辑在里面
+                    // 启动MQClientInstance,很多重要逻辑在里面，如开启每30秒更新路由信息表的定时任务，等等等等。。。
                     mQClientFactory.start();
                 }
 
