@@ -45,6 +45,7 @@ public abstract class RebalanceImpl {
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
         new ConcurrentHashMap<String, Set<MessageQueue>>();
+    // 缓存topic的订阅信息
     protected final ConcurrentMap<String /* topic */, SubscriptionData> subscriptionInner =
         new ConcurrentHashMap<String, SubscriptionData>();
     protected String consumerGroup;
@@ -256,6 +257,7 @@ public abstract class RebalanceImpl {
             }
             case CLUSTERING: {
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
+                // 从broke获取所有的消费者客户端ID
                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
                 if (null == mqSet) {
                     if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
@@ -271,11 +273,12 @@ public abstract class RebalanceImpl {
                     List<MessageQueue> mqAll = new ArrayList<MessageQueue>();
                     mqAll.addAll(mqSet);
 
+                    // 排序，保证同步消费者处理的前提是一样的
                     Collections.sort(mqAll);
                     Collections.sort(cidAll);
 
+                    // 调用分配策略进行分配，推荐使用AllocateMessageQueueAveragely和AllocateMessageQueueAveragelyByCircle
                     AllocateMessageQueueStrategy strategy = this.allocateMessageQueueStrategy;
-
                     List<MessageQueue> allocateResult = null;
                     try {
                         allocateResult = strategy.allocate(
@@ -294,6 +297,7 @@ public abstract class RebalanceImpl {
                         allocateResultSet.addAll(allocateResult);
                     }
 
+                    // 对比消息队列是否发生变化
                     boolean changed = this.updateProcessQueueTableInRebalance(topic, allocateResultSet, isOrder);
                     if (changed) {
                         log.info(

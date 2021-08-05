@@ -38,18 +38,22 @@ public class MappedFileQueue {
 
     private static final int DELETE_FILES_BATCH_MAX = 10;
 
-    // commitLog文件的存储路径
+    // 文件的存储目录，包括CommitLog文件，ConsumeQueue文件，IndexFile文件
     private final String storePath;
 
-    // 默认是1G
+    // 单个文件的存储大小，CommitLog文件默认是1G，
     private final int mappedFileSize;
 
+    // 持有多个MappedFile文件
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
 
     // 用于当前MappedFile写满后，创建新的
     private final AllocateMappedFileService allocateMappedFileService;
 
+    // 当前刷盘指针，表示该指针之前的数据都全部持久化到磁盘了
     private long flushedWhere = 0;
+
+    // 当前数据提交指针，内存中ByteBuffer当前写指针。显然该值会大于等于flushedWhere
     private long committedWhere = 0;
 
     private volatile long storeTimestamp = 0;
@@ -80,6 +84,9 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 根据时间戳来查找MappedFile
+     */
     public MappedFile getMappedFileByTime(final long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
 
@@ -429,6 +436,9 @@ public class MappedFileQueue {
         return deleteCount;
     }
 
+    /**
+     * 最终持久化到硬盘
+     */
     public boolean flush(final int flushLeastPages) {
         boolean result = true;
         MappedFile mappedFile = this.findMappedFileByOffset(this.flushedWhere, this.flushedWhere == 0);
@@ -471,6 +481,7 @@ public class MappedFileQueue {
             MappedFile firstMappedFile = this.getFirstMappedFile();
             MappedFile lastMappedFile = this.getLastMappedFile();
             if (firstMappedFile != null && lastMappedFile != null) {
+                // 小于第一个文件开始，或者大于最后一个文件结尾，肯定属于超出范围了
                 if (offset < firstMappedFile.getFileFromOffset() || offset >= lastMappedFile.getFileFromOffset() + this.mappedFileSize) {
                     LOG_ERROR.warn("Offset not matched. Request offset: {}, firstOffset: {}, lastOffset: {}, mappedFileSize: {}, mappedFiles count: {}",
                         offset,
@@ -479,6 +490,7 @@ public class MappedFileQueue {
                         this.mappedFileSize,
                         this.mappedFiles.size());
                 } else {
+                    // 具体算法，总长度/每个文件大小 就是第几个
                     int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
                     MappedFile targetFile = null;
                     try {

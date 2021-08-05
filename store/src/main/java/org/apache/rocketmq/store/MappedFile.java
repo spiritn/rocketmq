@@ -46,32 +46,39 @@ public class MappedFile extends ReferenceResource {
     public static final int OS_PAGE_SIZE = 1024 * 4;
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
-    // 当前虚拟机中MappedFile内存的大小和个数
+    // 当前虚拟机中MappedFile内存的大小
     private static final AtomicLong TOTAL_MAPPED_VIRTUAL_MEMORY = new AtomicLong(0);
+    // 当前JVM中MappedFile的个数
     private static final AtomicInteger TOTAL_MAPPED_FILES = new AtomicInteger(0);
 
+    // 该文件当前的写指针，从0开始
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
+    // 该文件当前的提交指针。如果开启TransientStorePool，则数据会先存储在TransientStorePool或者说ByteBuffer中
+    // 然后再提交到内存映射ByteBuffer中，再刷写到磁盘
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
+    // 该指针之前的数据都已经持久化到硬盘
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
+
+    // 文件大小
     protected int fileSize;
 
     // 文件通道
     protected FileChannel fileChannel;
-    /**
-     * 缓冲区
-     * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
-     */
+    // 堆内存ByteBuffer，如果不为空，数据会先存储到在该ByteBuffer中，然后再提交到内存映射文件mappedByteBuffer中
+    // Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
     protected ByteBuffer writeBuffer = null;
-
-    // 暂存池，
+    // 堆暂存池，开启TransientStorePoolEnable时不为空
     protected TransientStorePool transientStorePool = null;
     private String fileName;
     private long fileFromOffset;
     private File file;
 
-    // 文件的内存映射区域
+    // 物理文件的内存映射区域
     private MappedByteBuffer mappedByteBuffer;
+
+    // 文件最后一次写入的时间戳
     private volatile long storeTimestamp = 0;
+    // 是否是MappedFileQueue的第一个文件
     private boolean firstCreateInQueue = false;
 
     public MappedFile() {
@@ -153,6 +160,7 @@ public class MappedFile extends ReferenceResource {
     public void init(final String fileName, final int fileSize,
         final TransientStorePool transientStorePool) throws IOException {
         init(fileName, fileSize);
+        // 创建transientStorePool
         this.writeBuffer = transientStorePool.borrowBuffer();
         this.transientStorePool = transientStorePool;
     }
@@ -161,14 +169,17 @@ public class MappedFile extends ReferenceResource {
         this.fileName = fileName;
         this.fileSize = fileSize;
         this.file = new File(fileName);
+        // fileName即是初始偏移量
         this.fileFromOffset = Long.parseLong(this.file.getName());
         boolean ok = false;
 
         ensureDirOK(this.file.getParent());
 
         try {
+            // 创建物理文件file的fileChannel，然后创建对应的mappedByteBuffer
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
             this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
+
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
             TOTAL_MAPPED_FILES.incrementAndGet();
             ok = true;
@@ -214,7 +225,7 @@ public class MappedFile extends ReferenceResource {
         int currentPos = this.wrotePosition.get();
 
         if (currentPos < this.fileSize) {
-            // 创建ByteBuffer缓冲区
+            // 如果writeBuffer不为空，就先写入writeBuffer，否则直接写入mappedByteBuffer
             ByteBuffer byteBuffer = writeBuffer != null ? writeBuffer.slice() : this.mappedByteBuffer.slice();
             byteBuffer.position(currentPos);
             AppendMessageResult result;
@@ -341,6 +352,7 @@ public class MappedFile extends ReferenceResource {
                 byteBuffer.position(lastCommittedPosition);
                 byteBuffer.limit(writePos);
                 this.fileChannel.position(lastCommittedPosition);
+                // 提交到fileChannel中
                 this.fileChannel.write(byteBuffer);
                 this.committedPosition.set(writePos);
             } catch (Throwable e) {
@@ -368,14 +380,17 @@ public class MappedFile extends ReferenceResource {
         int flush = this.committedPosition.get();
         int write = this.wrotePosition.get();
 
+        // 如果当前页写满了，需要提交
         if (this.isFull()) {
             return true;
         }
 
+        // 如果commitLeastPages > 0，计算差值是否满足commitLeastPages
         if (commitLeastPages > 0) {
             return ((write / OS_PAGE_SIZE) - (flush / OS_PAGE_SIZE)) >= commitLeastPages;
         }
 
+        // 如果commitLeastPages < 0,直接提交
         return write > flush;
     }
 

@@ -77,7 +77,7 @@ public class NamesrvController {
         // 加载本地的KV配置
         this.kvConfigManager.load();
 
-        // 创建NettyRemotingServer，namesrv其实就是个netty服务端
+        // 创建NettyRemotingServer，namesrv是作个netty服务端
         this.remotingServer = new NettyRemotingServer(this.nettyServerConfig, this.brokerHousekeepingService);
         // netty需要的工作线程池，并注册到remotingServer
         this.remotingExecutor =

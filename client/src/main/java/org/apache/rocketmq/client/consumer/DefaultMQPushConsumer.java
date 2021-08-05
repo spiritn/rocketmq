@@ -96,6 +96,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      * Consuming point on consumer booting.
      * </p>
      *
+     *  只有在读到的消息偏移量小于0才会使用下述策略
      * There are three consuming points:
      * <ul>
      * <li>
@@ -149,7 +150,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     private MessageListener messageListener;
 
     /**
-     * Offset Storage
+     * Offset Storage 负责消费进度存储
      */
     private OffsetStore offsetStore;
 
@@ -159,7 +160,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     private int consumeThreadMin = 20;
 
     /**
-     * Max consumer thread number
+     * Max consumer thread number 工作队列是无界的，所以其实不会用到最大线程
      */
     private int consumeThreadMax = 20;
 
@@ -174,12 +175,14 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     private int consumeConcurrentlyMaxSpan = 2000;
 
     /**
+     * 消息流控，队列中默认最多1000条消息
      * Flow control threshold on queue level, each message queue will cache at most 1000 messages by default,
      * Consider the {@code pullBatchSize}, the instantaneous value may exceed the limit
      */
     private int pullThresholdForQueue = 1000;
 
     /**
+     * 队列中消息大小最多100M，超过就不再进行拉取
      * Limit the cached message size on queue level, each message queue will cache at most 100 MiB messages by default,
      * Consider the {@code pullBatchSize}, the instantaneous value may exceed the limit
      *
@@ -211,7 +214,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     private int pullThresholdSizeForTopic = -1;
 
     /**
-     * Message pull Interval
+     * Message pull Interval 即拉取任务的时间间隔，在推模式下，拉取一次后继续拉取
      */
     private long pullInterval = 0;
 
@@ -221,7 +224,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     private int consumeMessageBatchMaxSize = 1;
 
     /**
-     * Batch pull size
+     * Batch pull size 每次拉取消息32条
      */
     private int pullBatchSize = 32;
 
@@ -689,6 +692,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
 
     /**
      * This method gets internal infrastructure readily to serve. Instances must call this method after configuration.
+     * consumer的启动方法，用户在配置consumer后要调用此方法启动
      *
      * @throws MQClientException if there is any client error.
      */

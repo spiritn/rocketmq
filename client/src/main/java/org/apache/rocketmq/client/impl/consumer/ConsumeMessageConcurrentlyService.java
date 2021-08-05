@@ -70,6 +70,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         this.consumerGroup = this.defaultMQPushConsumer.getConsumerGroup();
         this.consumeRequestQueue = new LinkedBlockingQueue<Runnable>();
 
+        // 消费线程池
         this.consumeExecutor = new ThreadPoolExecutor(
             this.defaultMQPushConsumer.getConsumeThreadMin(),
             this.defaultMQPushConsumer.getConsumeThreadMax(),
@@ -204,10 +205,13 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         final ProcessQueue processQueue,
         final MessageQueue messageQueue,
         final boolean dispatchToConsume) {
+        // 并发消费的数量，默认1
         final int consumeBatchSize = this.defaultMQPushConsumer.getConsumeMessageBatchMaxSize();
         if (msgs.size() <= consumeBatchSize) {
+            // 创建一个Runnable任务
             ConsumeRequest consumeRequest = new ConsumeRequest(msgs, processQueue, messageQueue);
             try {
+                // 然后提交到消费线程池
                 this.consumeExecutor.submit(consumeRequest);
             } catch (RejectedExecutionException e) {
                 this.submitConsumeRequestLater(consumeRequest);
@@ -279,6 +283,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
 
         switch (this.defaultMQPushConsumer.getMessageModel()) {
             case BROADCASTING:
+                // 广播模式失败了就失败了
                 for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
                     MessageExt msg = consumeRequest.getMsgs().get(i);
                     log.warn("BROADCASTING, the message consume failed, drop it, {}", msg.toString());
@@ -389,6 +394,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             defaultMQPushConsumerImpl.resetRetryAndNamespace(msgs, defaultMQPushConsumer.getConsumerGroup());
 
             ConsumeMessageContext consumeMessageContext = null;
+            // 是否有钩子
             if (ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.hasHook()) {
                 consumeMessageContext = new ConsumeMessageContext();
                 consumeMessageContext.setNamespace(defaultMQPushConsumer.getNamespace());
@@ -418,6 +424,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                     messageQueue);
                 hasException = true;
             }
+            // 根据用户返回的status和是否抛出异常，来决定returnType
             long consumeRT = System.currentTimeMillis() - beginTimestamp;
             if (null == status) {
                 if (hasException) {
@@ -455,6 +462,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 .incConsumeRT(ConsumeMessageConcurrentlyService.this.consumerGroup, messageQueue.getTopic(), consumeRT);
 
             if (!processQueue.isDropped()) {
+                // 处理返回结果
                 ConsumeMessageConcurrentlyService.this.processConsumeResult(status, context, this);
             } else {
                 log.warn("processQueue is dropped without process consume result. messageQueue={}, msgs={}", messageQueue, msgs);

@@ -200,12 +200,16 @@ public class TransactionalMessageBridge {
         return store.asyncPutMessage(parseHalfMessageInner(messageInner));
     }
 
+    /**
+     * 处理半事务消息
+     */
     private MessageExtBrokerInner parseHalfMessageInner(MessageExtBrokerInner msgInner) {
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_TOPIC, msgInner.getTopic());
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_QUEUE_ID,
             String.valueOf(msgInner.getQueueId()));
         msgInner.setSysFlag(
             MessageSysFlag.resetTransactionValue(msgInner.getSysFlag(), MessageSysFlag.TRANSACTION_NOT_TYPE));
+        // 修改Topic，不投递到queue
         msgInner.setTopic(TransactionalMessageUtil.buildHalfTopic());
         msgInner.setQueueId(0);
         msgInner.setPropertiesString(MessageDecoder.messageProperties2String(msgInner.getProperties()));

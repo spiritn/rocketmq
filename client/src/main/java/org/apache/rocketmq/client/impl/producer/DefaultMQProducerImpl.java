@@ -740,7 +740,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     }
 
     /**
-     *  发送消息的内核实现
+     *  发送消息的内核实现,此时要发送的MessageQueue已经确定
      */
     private SendResult sendKernelImpl(final Message msg,
         final MessageQueue mq,
@@ -1288,6 +1288,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                         localTransactionState = localTransactionExecuter.executeLocalTransactionBranch(msg, arg);
                     } else if (transactionListener != null) {
                         log.debug("Used new transaction API");
+                        // 如果发送成功，执行本地事务
                         localTransactionState = transactionListener.executeLocalTransaction(msg, arg);
                     }
                     if (null == localTransactionState) {
@@ -1315,6 +1316,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
 
         try {
+            // 将本地事务状态localTransactionState通知broker
             this.endTransaction(sendResult, localTransactionState, localException);
         } catch (Exception e) {
             log.warn("local transaction execute " + localTransactionState + ", but end broker transaction failed", e);

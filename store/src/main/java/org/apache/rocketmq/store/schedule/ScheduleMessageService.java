@@ -110,9 +110,12 @@ public class ScheduleMessageService extends ConfigManager {
         return storeTimestamp + 1000;
     }
 
+    // 定时消息启动
     public void start() {
         if (started.compareAndSet(false, true)) {
+            // 创建timer定时器
             this.timer = new Timer("ScheduleMessageTimerThread", true);
+            // 循环每个延迟等级
             for (Map.Entry<Integer, Long> entry : this.delayLevelTable.entrySet()) {
                 Integer level = entry.getKey();
                 Long timeDelay = entry.getValue();
@@ -122,10 +125,12 @@ public class ScheduleMessageService extends ConfigManager {
                 }
 
                 if (timeDelay != null) {
+                    // FIRST_DELAY_TIME首次1秒
                     this.timer.schedule(new DeliverDelayedMessageTimerTask(level, offset), FIRST_DELAY_TIME);
                 }
             }
 
+            // 每10秒进行持久化
             this.timer.scheduleAtFixedRate(new TimerTask() {
 
                 @Override
@@ -310,6 +315,7 @@ public class ScheduleMessageService extends ConfigManager {
                                                     msgInner.getTopic(), msgInner);
                                             continue;
                                         }
+                                        // 再次写入到MessageStore
                                         PutMessageResult putMessageResult =
                                             ScheduleMessageService.this.writeMessageStore
                                                 .putMessage(msgInner);

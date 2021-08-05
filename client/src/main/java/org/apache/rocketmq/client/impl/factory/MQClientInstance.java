@@ -241,7 +241,7 @@ public class MQClientInstance {
 
                     // Start various schedule tasks 开启各种定时任务
                     this.startScheduledTask();
-                    // Start pull service
+                    // Start pull service pullMessageService启动
                     this.pullMessageService.start();
                     // Start rebalance service
                     this.rebalanceService.start();
@@ -991,6 +991,7 @@ public class MQClientInstance {
     }
 
     public void doRebalance() {
+        // 遍历每个注册的消费者，调用其doRebalance()
         for (Map.Entry<String, MQConsumerInner> entry : this.consumerTable.entrySet()) {
             MQConsumerInner impl = entry.getValue();
             if (impl != null) {

@@ -68,6 +68,7 @@ public class PullRequestHoldService extends ServiceThread {
         log.info("{} service started", this.getServiceName());
         while (!this.isStopped()) {
             try {
+                // 开启长轮询就等待5秒，否则等待1秒
                 if (this.brokerController.getBrokerConfig().isLongPollingEnable()) {
                     this.waitForRunning(5 * 1000);
                 } else {
@@ -99,6 +100,7 @@ public class PullRequestHoldService extends ServiceThread {
             if (2 == kArray.length) {
                 String topic = kArray[0];
                 int queueId = Integer.parseInt(kArray[1]);
+                // 再次查询查询新消息
                 final long offset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, queueId);
                 try {
                     this.notifyMessageArriving(topic, queueId, offset);
@@ -129,6 +131,7 @@ public class PullRequestHoldService extends ServiceThread {
                     }
 
                     if (newestOffset > request.getPullFromThisOffset()) {
+                        // 消息过滤匹配
                         boolean match = request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
                             new ConsumeQueueExt.CqExtUnit(tagsCode, msgStoreTime, filterBitMap));
                         // match by bit map, need eval again when properties is not null.

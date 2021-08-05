@@ -123,6 +123,9 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
         }
     }
 
+    /**
+     * 回查事务消息状态
+     */
     @Override
     public void check(long transactionTimeout, int transactionCheckMax,
         AbstractTransactionalMessageCheckListener listener) {
@@ -227,6 +230,7 @@ public class TransactionalMessageServiceImpl implements TransactionalMessageServ
                             if (!putBackHalfMsgQueue(msgExt, i)) {
                                 continue;
                             }
+                            // 开启线程发送回查消息
                             listener.resolveHalfMsg(msgExt);
                         } else {
                             pullResult = fillOpRemoveMap(removeMap, opQueue, pullResult.getNextBeginOffset(), halfOffset, doneOpOffset);

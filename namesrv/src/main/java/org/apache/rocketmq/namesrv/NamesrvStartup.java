@@ -85,7 +85,7 @@ public class NamesrvStartup {
         }
 
         final NamesrvConfig namesrvConfig = new NamesrvConfig();
-        // 使用的是Netty，并修改其监听端口位9876，所以broke，producer都要来连9876端口。写死是因为肯定没人会改吗
+        // 使用的是Netty，并修改其监听端口位9876，所以broke，producer都要来连9876端口
         final NettyServerConfig nettyServerConfig = new NettyServerConfig();
         nettyServerConfig.setListenPort(9876);
         if (commandLine.hasOption('c')) {

@@ -38,7 +38,9 @@ public class TransientStorePool {
 
     public TransientStorePool(final MessageStoreConfig storeConfig) {
         this.storeConfig = storeConfig;
+        // 默认5
         this.poolSize = storeConfig.getTransientStorePoolSize();
+        // 默认1个G？？！
         this.fileSize = storeConfig.getMappedFileSizeCommitLog();
         this.availableBuffers = new ConcurrentLinkedDeque<>();
     }
@@ -47,11 +49,13 @@ public class TransientStorePool {
      * It's a heavy init method.
      */
     public void init() {
+        // 创建1G大小的5个ByteBuffer
         for (int i = 0; i < poolSize; i++) {
             ByteBuffer byteBuffer = ByteBuffer.allocateDirect(fileSize);
 
             final long address = ((DirectBuffer) byteBuffer).address();
             Pointer pointer = new Pointer(address);
+            // 锁定该内存，避免被交换
             LibC.INSTANCE.mlock(pointer, new NativeLong(fileSize));
 
             availableBuffers.offer(byteBuffer);
